@@ -955,9 +955,14 @@ function exportPNG(){
     ectx.restore();
   }
 
+  // Calculate actual pixel resolution for filename
+  const refDensity0=gRes(screens[0]).resW/screens[0].widthM;
+  const fileResX=Math.round((maxX-minX)*refDensity0);
+  const fileResY=Math.round((maxY-minY)*refDensity0);
+
   ec.toBlob(b=>{
     const u=URL.createObjectURL(b),a=document.createElement('a');
-    a.download=`${pixelMapName.split(" ").join("_")}_${ew}x${eh}.png`;a.href=u;a.click();URL.revokeObjectURL(u);
+    a.download=`${pixelMapName.split(" ").join("_")}_${fileResX}x${fileResY}.png`;a.href=u;a.click();URL.revokeObjectURL(u);
     showToast('PNG exported!');
   },'image/png');
 }
@@ -995,8 +1000,11 @@ function exportSVG(){
   }
 
   svg+=`</svg>`;
+  const svgRefDensity=gRes(screens[0]).resW/screens[0].widthM;
+  const svgFileResX=Math.round((maxX-minX)*svgRefDensity);
+  const svgFileResY=Math.round((maxY-minY)*svgRefDensity);
   const b=new Blob([svg],{type:'image/svg+xml'}),u=URL.createObjectURL(b),a=document.createElement('a');
-  a.download=`${pixelMapName.split(" ").join("_")}_${sw}x${sh}.svg`;a.href=u;a.click();URL.revokeObjectURL(u);
+  a.download=`${pixelMapName.split(" ").join("_")}_${svgFileResX}x${svgFileResY}.svg`;a.href=u;a.click();URL.revokeObjectURL(u);
   showToast('SVG exported!');
 }
 
