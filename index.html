@@ -917,7 +917,9 @@ function exportPNG(){
 
   // We need to figure out a common scale: use the first screen's pixel density
   // Actually each screen may differ, so we pick a high PPM for export
-  const exportPPM=200; // high quality
+  // Use the first screen's actual pixel density as the export scale
+  const refScreen=screens[0];
+  const exportPPM=gRes(refScreen).resW/refScreen.widthM; // px per meter = true resolution
   const ew=Math.round((maxX-minX)*exportPPM);
   const eh=Math.round((maxY-minY)*exportPPM);
 
@@ -974,7 +976,7 @@ function exportSVG(){
   // Use first screen to determine pixel scale
   // For SVG, use actual resolution of each screen
   // We'll use a common unit: 1 meter = 256px in SVG
-  const svgPPM=256;
+  const svgPPM=gRes(screens[0]).resW/screens[0].widthM;
   const sw=Math.round((maxX-minX)*svgPPM), sh=Math.round((maxY-minY)*svgPPM);
 
   let svg=`<?xml version="1.0" encoding="UTF-8"?>
@@ -1614,7 +1616,6 @@ function drawCustomScreen(s,idx){
 
 // ─── CUSTOM EXPORT ───
 function cExportPNG(){
-  const exportPPM=200;
   let totalW=0,maxH=0;
   customScreens.forEach(s=>{totalW+=s.resW;maxH=Math.max(maxH,s.resH);});
   // Export at actual pixel resolution
