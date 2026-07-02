@@ -159,11 +159,15 @@
   </div>
   <div class="controls" id="panel"></div>
   <div class="canvas-area" id="canvasArea">
-    <div class="layout-select">
+    <div class="layout-select" id="ledLayoutSelect">
       <button class="layout-btn active" data-layout="horizontal" onclick="autoLayout('horizontal')">↔ Horizontal</button>
       <button class="layout-btn" data-layout="vertical" onclick="autoLayout('vertical')">↕ Vertical</button>
       <button class="layout-btn" data-layout="grid" onclick="autoLayout('grid')">⊞ Grid</button>
       <button class="layout-btn" data-layout="free" onclick="setFreeLayout()">✥ Free</button>
+    </div>
+    <div class="layout-select" id="customLayoutSelect" style="display:none">
+      <button class="layout-btn active" data-clayout="auto" onclick="cSetLayout('auto')">↔ Auto</button>
+      <button class="layout-btn" data-clayout="free" onclick="cSetLayout('free')">✥ Free</button>
     </div>
     <div class="snap-row" id="snapRow" style="display:none">
       <button class="layout-btn snap-btn active" id="snapBtn" onclick="toggleSnap()" title="Snap to 0.5m grid (hold Shift to temporarily enable/disable)">⊟ Snap On</button>
@@ -250,6 +254,7 @@ function mkScreen(i){
 let screens=[mkScreen(0)];
 let activeIdx=0;
 let layoutMode='horizontal';
+let cLayoutMode='auto'; // custom tab: 'auto' | 'free'
 let zoom=1, panX=40, panY=40;
 let dragging=null, dragOff={x:0,y:0};
 let isPanning=false, panStart={x:0,y:0}, panStartOff={x:0,y:0};
@@ -282,8 +287,8 @@ const PPM = 40; // 40px per meter at zoom=1
 
 function autoLayout(mode){
   layoutMode=mode;
-  document.querySelectorAll('.layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout===mode));
-  document.getElementById('snapRow').style.display='none';
+  document.querySelectorAll('#ledLayoutSelect .layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout===mode));
+  updateSnapRowVisibility();
   let x=0,y=0,maxH=0,col=0;
   const gap=0; // no gap between screens
   const cols=Math.ceil(Math.sqrt(screens.length));
@@ -303,14 +308,26 @@ function autoLayout(mode){
   drawAll();
 }
 
-function setRot(deg){const s=S();s.rotation=deg;renderPanel();drawAll();}
+// ═══ SHARED GEOMETRY HELPERS (work for both LED and Custom screens) ═══
+// Screen size in meters — LED screens use physical size, custom screens map px→m via PPM
+function sDimsM(s){
+  if(s.widthM!==undefined) return{w:s.widthM,h:s.heightM};
+  return{w:s.resW/PPM,h:s.resH/PPM};
+}
 
-// Get bounding box of a screen accounting for rotation (in meters)
+// Screen rect in canvas coordinates
+function sRectCanvas(s){
+  const d=sDimsM(s);
+  const p=mToCanvas(s.posX,s.posY);
+  return{x:p.x,y:p.y,w:d.w*PPM*zoom,h:d.h*PPM*zoom};
+}
+
+// Axis-aligned bounding box in meters, accounting for rotation
 function getScreenBBox(s){
-  const cx=s.posX+s.widthM/2, cy=s.posY+s.heightM/2;
+  const d=sDimsM(s);
+  const cx=s.posX+d.w/2, cy=s.posY+d.h/2;
   const rad=(s.rotation||0)*Math.PI/180;
-  const hw=s.widthM/2, hh=s.heightM/2;
-  // Four corners relative to center
+  const hw=d.w/2, hh=d.h/2;
   const corners=[[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]];
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
   corners.forEach(([lx,ly])=>{
@@ -322,11 +339,23 @@ function getScreenBBox(s){
   return{minX,minY,maxX,maxY};
 }
 
+// Apply rotation transform around a rect's center on a 2d context
+function applyRot(ctx,s,x,y,w,h){
+  if(!s.rotation) return;
+  const rcx=x+w/2, rcy=y+h/2;
+  ctx.translate(rcx,rcy);
+  ctx.rotate(s.rotation*Math.PI/180);
+  ctx.translate(-rcx,-rcy);
+}
+
+// Active screen list + free-mode check for the current app mode
+function curList(){return appMode==='custom'?customScreens:screens;}
+function isFreeMode(){return appMode==='custom'?cLayoutMode==='free':layoutMode==='free';}
+
 function setFreeLayout(){
   layoutMode='free';
-  document.querySelectorAll('.layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout==='free'));
-  document.getElementById('snapRow').style.display='';
-  updateSnapBtn();
+  document.querySelectorAll('#ledLayoutSelect .layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout==='free'));
+  updateSnapRowVisibility();
 }
 
 function toggleSnap(){
@@ -606,14 +635,7 @@ function drawScreen(s,idx){
   const sx=w/resW, sy=h/resH;
 
   ctx.save();
-
-  // Rotation around center of screen
-  if(s.rotation){
-    const rcx=p.x+w/2, rcy=p.y+h/2;
-    ctx.translate(rcx,rcy);
-    ctx.rotate(s.rotation*Math.PI/180);
-    ctx.translate(-rcx,-rcy);
-  }
+  applyRot(ctx,s,p.x,p.y,w,h);
 
   // BG
   ctx.fillStyle=s.bgColor;
@@ -731,9 +753,8 @@ function corner(ctx,x,y,sz,dx,dy){ctx.beginPath();ctx.moveTo(x+dx*sz,y);ctx.line
 function updateHighlight(){
   const s=S();
   const hl=document.getElementById('screenHL');
-  const p=mToCanvas(s.posX,s.posY);
-  const w=s.widthM*PPM*zoom, h=s.heightM*PPM*zoom;
-  hl.style.left=p.x+'px';hl.style.top=p.y+'px';hl.style.width=w+'px';hl.style.height=h+'px';
+  const r=sRectCanvas(s);
+  hl.style.left=r.x+'px';hl.style.top=r.y+'px';hl.style.width=r.w+'px';hl.style.height=r.h+'px';
   hl.style.transformOrigin='center center';
   hl.style.transform=s.rotation?`rotate(${s.rotation}deg)`:'none';
   hl.classList.add('visible');
@@ -742,42 +763,44 @@ function updateHighlight(){
 // ─── INTERACTION ───
 // Hit test for rotated rectangle: rotate point back to screen-local coords
 function hitTestScreen(s,mx,my){
-  const p=mToCanvas(s.posX,s.posY);
-  const w=s.widthM*PPM*zoom, h=s.heightM*PPM*zoom;
-  const rcx=p.x+w/2, rcy=p.y+h/2;
+  const r=sRectCanvas(s);
+  const rcx=r.x+r.w/2, rcy=r.y+r.h/2;
   const rad=-(s.rotation||0)*Math.PI/180;
   const dx=mx-rcx, dy=my-rcy;
   const lx=dx*Math.cos(rad)-dy*Math.sin(rad)+rcx;
   const ly=dx*Math.sin(rad)+dy*Math.cos(rad)+rcy;
-  return lx>=p.x&&lx<=p.x+w&&ly>=p.y&&ly<=p.y+h;
+  return lx>=r.x&&lx<=r.x+r.w&&ly>=r.y&&ly<=r.y+r.h;
 }
 
 let rotating=null, rotStartAngle=0, rotStartRot=0;
-
 
 // Block right-click context menu everywhere (capture phase + return false for Shift+right-click)
 document.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();return false;},true);
 window.oncontextmenu=()=>false;
 
+// Select screen i in the current mode's panel
+function selectScreen(i){
+  if(appMode==='custom'){customActiveIdx=i;renderCustomPanel();}
+  else{activeIdx=i;renderPanel();}
+}
+
 canvas.addEventListener('mousedown',e=>{
   e.preventDefault();
   const rect=canvas.getBoundingClientRect();
   const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const list=curList();
 
-  // Right-click: start rotation in free mode
+  // Right-click: start rotation (free mode only)
   if(e.button===2){
-    if(layoutMode==='free'){
-      for(let i=screens.length-1;i>=0;i--){
-        const s=screens[i];
+    if(isFreeMode()){
+      for(let i=list.length-1;i>=0;i--){
+        const s=list[i];
         if(hitTestScreen(s,mx,my)){
-          const p=mToCanvas(s.posX,s.posY);
-          const w=s.widthM*PPM*zoom, h=s.heightM*PPM*zoom;
-          const rcx=p.x+w/2, rcy=p.y+h/2;
+          const r=sRectCanvas(s);
           rotating=i;
-          activeIdx=i;
-          rotStartAngle=Math.atan2(my-rcy,mx-rcx)*180/Math.PI;
+          selectScreen(i);
+          rotStartAngle=Math.atan2(my-(r.y+r.h/2),mx-(r.x+r.w/2))*180/Math.PI;
           rotStartRot=s.rotation||0;
-          renderPanel();
           redraw();
           return;
         }
@@ -788,15 +811,14 @@ canvas.addEventListener('mousedown',e=>{
 
   // Left-click: select / drag
   if(e.button===0){
-    for(let i=screens.length-1;i>=0;i--){
-      const s=screens[i];
+    for(let i=list.length-1;i>=0;i--){
+      const s=list[i];
       if(hitTestScreen(s,mx,my)){
-        const p=mToCanvas(s.posX,s.posY);
-        activeIdx=i;
-        renderPanel();
-        if(layoutMode==='free'){
+        const r=sRectCanvas(s);
+        selectScreen(i);
+        if(isFreeMode()){
           dragging=i;
-          dragOff={x:mx-p.x,y:my-p.y};
+          dragOff={x:mx-r.x,y:my-r.y};
         }
         redraw();
         return;
@@ -813,49 +835,45 @@ const SNAP_ANGLES=[0,45,90,135,180,-180,-135,-90,-45];
 
 // Use document-level mousemove/mouseup so rotation works even if cursor leaves canvas
 document.addEventListener('mousemove',e=>{
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const list=curList();
+
   if(rotating===null&&dragging===null&&!isPanning){
-    // Only handle cursor style when hovering canvas
-    const rect=canvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    // Hover cursor only
     if(mx>=0&&mx<=rect.width&&my>=0&&my<=rect.height){
       let onScreen=false;
-      for(let i=screens.length-1;i>=0;i--){
-        if(hitTestScreen(screens[i],mx,my)){onScreen=true;break;}
+      for(let i=list.length-1;i>=0;i--){
+        if(hitTestScreen(list[i],mx,my)){onScreen=true;break;}
       }
-      canvas.style.cursor=onScreen?(layoutMode==='free'?'grab':'pointer'):'move';
+      canvas.style.cursor=onScreen?(isFreeMode()?'grab':'pointer'):'move';
     }
     return;
   }
 
-  const rect=canvas.getBoundingClientRect();
-  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
-
   if(rotating!==null){
     e.preventDefault();
-    const s=screens[rotating];
-    const p=mToCanvas(s.posX,s.posY);
-    const w=s.widthM*PPM*zoom, h=s.heightM*PPM*zoom;
-    const rcx=p.x+w/2, rcy=p.y+h/2;
-    const curAngle=Math.atan2(my-rcy,mx-rcx)*180/Math.PI;
+    const s=list[rotating];
+    const r=sRectCanvas(s);
+    const curAngle=Math.atan2(my-(r.y+r.h/2),mx-(r.x+r.w/2))*180/Math.PI;
     let newRot=rotStartRot+(curAngle-rotStartAngle);
     while(newRot>180) newRot-=360;
     while(newRot<-180) newRot+=360;
-    // Shift: snap to 45° increments
-    if(shiftHeld){
+    if(shiftHeld){ // snap to 45° increments
       let closest=0, minDist=Infinity;
       SNAP_ANGLES.forEach(a=>{let d=Math.abs(newRot-a);if(d>180)d=360-d;if(d<minDist){minDist=d;closest=a;}});
       newRot=closest;
     }
     s.rotation=Math.round(newRot);
-    renderPanel();
+    if(appMode==='custom')renderCustomPanel();else renderPanel();
     redraw();
     return;
   }
 
   if(dragging!==null){
     const m=canvasToM(mx-dragOff.x,my-dragOff.y);
-    screens[dragging].posX=isSnapping?Math.round(m.x*2)/2:m.x;
-    screens[dragging].posY=isSnapping?Math.round(m.y*2)/2:m.y;
+    list[dragging].posX=isSnapping?Math.round(m.x*2)/2:m.x;
+    list[dragging].posY=isSnapping?Math.round(m.y*2)/2:m.y;
     redraw();
   } else if(isPanning){
     panX=panStartOff.x+(e.clientX-panStart.x);
@@ -896,8 +914,8 @@ function zoomFit(){
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
   if(appMode==='custom'){
     // Auto-layout custom screens first
-    let xOff=0;customScreens.forEach(s=>{s.posX=xOff;s.posY=0;xOff+=s.resW/PPM;});
-    scrs.forEach(s=>{minX=Math.min(minX,s.posX);minY=Math.min(minY,s.posY);maxX=Math.max(maxX,s.posX+s.resW/PPM);maxY=Math.max(maxY,s.posY+s.resH/PPM);});
+    if(cLayoutMode==='auto'){let xOff=0;customScreens.forEach(s=>{s.posX=xOff;s.posY=0;xOff+=s.resW/PPM;});}
+    scrs.forEach(s=>{const bb=getScreenBBox(s);minX=Math.min(minX,bb.minX);minY=Math.min(minY,bb.minY);maxX=Math.max(maxX,bb.maxX);maxY=Math.max(maxY,bb.maxY);});
   } else {
     scrs.forEach(s=>{const bb=getScreenBBox(s);minX=Math.min(minX,bb.minX);minY=Math.min(minY,bb.minY);maxX=Math.max(maxX,bb.maxX);maxY=Math.max(maxY,bb.maxY);});
   }
@@ -1015,12 +1033,7 @@ function drawScreenExport(ctx,s,idx,ox,oy,w,h){
   const sx=w/resW,sy=h/resH;
 
   ctx.save();
-  if(s.rotation){
-    const rcx=ox+w/2, rcy=oy+h/2;
-    ctx.translate(rcx,rcy);
-    ctx.rotate(s.rotation*Math.PI/180);
-    ctx.translate(-rcx,-rcy);
-  }
+  applyRot(ctx,s,ox,oy,w,h);
 
   ctx.fillStyle=s.bgColor;ctx.fillRect(ox,oy,w,h);
 
@@ -1310,11 +1323,26 @@ function setMode(mode){
   appMode=mode;
   document.getElementById('modeLED').classList.toggle('active',mode==='led');
   document.getElementById('modeCustom').classList.toggle('active',mode==='custom');
-  // Show/hide layout toolbar
-  document.querySelector('.layout-select').style.display=mode==='led'?'':'none';
-  document.getElementById('snapRow').style.display=(mode==='led'&&layoutMode==='free')?'':'none';
+  // Show the layout toolbar for the active mode
+  document.getElementById('ledLayoutSelect').style.display=mode==='led'?'':'none';
+  document.getElementById('customLayoutSelect').style.display=mode==='custom'?'':'none';
+  updateSnapRowVisibility();
   if(mode==='led'){renderPanel();drawAll();}
   else{renderCustomPanel();drawCustomAll();}
+}
+
+// Snap row shows whenever the current mode is in free layout
+function updateSnapRowVisibility(){
+  document.getElementById('snapRow').style.display=isFreeMode()?'':'none';
+  if(isFreeMode())updateSnapBtn();
+}
+
+// Custom tab layout: 'auto' (horizontal strip) or 'free' (drag + rotate)
+function cSetLayout(mode){
+  cLayoutMode=mode;
+  document.querySelectorAll('#customLayoutSelect .layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.clayout===mode));
+  updateSnapRowVisibility();
+  drawCustomAll();
 }
 
 // ─── CUSTOM RESOLUTION ───
@@ -1389,6 +1417,9 @@ function renderCustomPanel(){
   h+=`<div class="cb"><input type="checkbox" id="cBorder" ${s.showBorder?'checked':''}><span>Border</span></div>`;
   if(s.showBorder) h+=slider('Border W','cBW',1,40,s.borderWidth,'px');
   h+=`<div class="cb"><input type="checkbox" id="cCross" ${s.showCrosshair?'checked':''}><span>Crosshair</span></div>`;
+  if(cLayoutMode==='free'&&s.rotation){
+    h+=`<div style="font-size:10px;color:var(--text-muted);margin-top:4px;font-family:'IBM Plex Mono',monospace">Rotation: ${s.rotation}° <span style="opacity:.5">(right-drag to rotate)</span></div>`;
+  }
   if(s.showCrosshair) h+=slider('Cross Opacity','cCrossOp',1,100,s.crosshairOpacity,'%');
 
   // Branding
@@ -1510,19 +1541,22 @@ function drawCustomAll(){
   const canvas=document.getElementById('mainCanvas');
   const ctx=canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  // For custom, lay them out horizontally auto
-  let xOff=0;
-  customScreens.forEach((s,i)=>{
-    s.posX=xOff;s.posY=0;
-    xOff+=s.resW/PPM; // convert px to "meters" for canvas system
-  });
+  // Auto layout: horizontal strip. Free layout: keep user positions/rotation.
+  if(cLayoutMode==='auto'){
+    let xOff=0;
+    customScreens.forEach(s=>{
+      s.posX=xOff;s.posY=0;s.rotation=0;
+      xOff+=s.resW/PPM;
+    });
+  }
   customScreens.forEach((s,i)=>drawCustomScreen(s,i));
-  // Highlight
+  // Highlight (rotates with screen)
   const s=cActive();
   const hl=document.getElementById('screenHL');
-  const p=mToCanvas(s.posX,s.posY);
-  const w=(s.resW/PPM)*PPM*zoom, h=(s.resH/PPM)*PPM*zoom;
-  hl.style.left=p.x+'px';hl.style.top=p.y+'px';hl.style.width=w+'px';hl.style.height=h+'px';
+  const r=sRectCanvas(s);
+  hl.style.left=r.x+'px';hl.style.top=r.y+'px';hl.style.width=r.w+'px';hl.style.height=r.h+'px';
+  hl.style.transformOrigin='center center';
+  hl.style.transform=s.rotation?`rotate(${s.rotation}deg)`:'none';
   hl.classList.add('visible');
 }
 
@@ -1536,6 +1570,7 @@ function drawCustomScreen(s,idx){
   const sx=w/resW;
 
   ctx.save();
+  applyRot(ctx,s,p.x,p.y,w,h);
   ctx.fillStyle=s.bgColor;ctx.fillRect(p.x,p.y,w,h);
 
   // Grid with density control
@@ -1615,45 +1650,51 @@ function drawCustomScreen(s,idx){
 }
 
 // ─── CUSTOM EXPORT ───
+// Positions are kept in "meters" (px/PPM); exports convert back with ×PPM so 1 unit = 1 real pixel.
+function cExportBounds(){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  customScreens.forEach(s=>{
+    const bb=getScreenBBox(s);
+    minX=Math.min(minX,bb.minX);minY=Math.min(minY,bb.minY);
+    maxX=Math.max(maxX,bb.maxX);maxY=Math.max(maxY,bb.maxY);
+  });
+  return{minX,minY,totalW:Math.round((maxX-minX)*PPM),totalH:Math.round((maxY-minY)*PPM)};
+}
+
 function cExportPNG(){
-  let totalW=0,maxH=0;
-  customScreens.forEach(s=>{totalW+=s.resW;maxH=Math.max(maxH,s.resH);});
-  // Export at actual pixel resolution
-  const ec=document.createElement('canvas');ec.width=totalW;ec.height=maxH;
+  const{minX,minY,totalW,totalH}=cExportBounds();
+  const ec=document.createElement('canvas');ec.width=totalW;ec.height=totalH;
   const ectx=ec.getContext('2d');
-  ectx.fillStyle='#000';ectx.fillRect(0,0,totalW,maxH);
-  let xOff=0;
+  ectx.fillStyle='#000';ectx.fillRect(0,0,totalW,totalH);
   customScreens.forEach((s,i)=>{
-    drawCustomScreenExport(ectx,s,i,xOff,0,s.resW,s.resH);
-    xOff+=s.resW;
+    drawCustomScreenExport(ectx,s,i,(s.posX-minX)*PPM,(s.posY-minY)*PPM,s.resW,s.resH);
   });
   ec.toBlob(b=>{
     const u=URL.createObjectURL(b),a=document.createElement('a');
-    a.download=`${pixelMapName.split(" ").join("_")}_${totalW}x${maxH}.png`;a.href=u;a.click();URL.revokeObjectURL(u);
+    a.download=`${pixelMapName.split(" ").join("_")}_${totalW}x${totalH}.png`;a.href=u;a.click();URL.revokeObjectURL(u);
     showToast('PNG exported at full resolution!');
   },'image/png');
 }
 
 function cExportSVG(){
-  let totalW=0,maxH=0;
-  customScreens.forEach(s=>{totalW+=s.resW;maxH=Math.max(maxH,s.resH);});
+  const{minX,minY,totalW,totalH}=cExportBounds();
   let svg=`<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${totalW} ${maxH}" width="${totalW}" height="${maxH}">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${totalW} ${totalH}" width="${totalW}" height="${totalH}">
 <defs><style>@import url('https://fonts.googleapis.com/css2?family=Special+Gothic&amp;family=IBM+Plex+Mono:wght@300;400;500&amp;display=swap');</style></defs>
-<rect width="${totalW}" height="${maxH}" fill="#000"/>`;
-  let xOff=0;
+<rect width="${totalW}" height="${totalH}" fill="#000"/>`;
   customScreens.forEach((s,idx)=>{
-    svg+=buildCustomSVGScreen(s,idx,xOff,0,s.resW,s.resH);
-    xOff+=s.resW;
+    svg+=buildCustomSVGScreen(s,idx,(s.posX-minX)*PPM,(s.posY-minY)*PPM,s.resW,s.resH);
   });
   svg+=`</svg>`;
   const b=new Blob([svg],{type:'image/svg+xml'}),u=URL.createObjectURL(b),a=document.createElement('a');
-  a.download=`${pixelMapName.split(" ").join("_")}_${totalW}x${maxH}.svg`;a.href=u;a.click();URL.revokeObjectURL(u);
+  a.download=`${pixelMapName.split(" ").join("_")}_${totalW}x${totalH}.svg`;a.href=u;a.click();URL.revokeObjectURL(u);
   showToast('SVG exported!');
 }
 
 function drawCustomScreenExport(ctx,s,idx,ox,oy,w,h){
   const resW=s.resW,resH=s.resH;
+  ctx.save();
+  applyRot(ctx,s,ox,oy,w,h);
   ctx.fillStyle=s.bgColor;ctx.fillRect(ox,oy,w,h);
 
   if(s.showGrid){
@@ -1700,11 +1741,14 @@ function drawCustomScreenExport(ctx,s,idx,ox,oy,w,h){
     ctx.fillStyle=hx(s.dimTextColor,s.dimTextOpacity/100);
     ctx.textAlign='right';ctx.textBaseline='bottom';ctx.fillText(`${resW} × ${resH}px`,ox+w*.98,oy+h*.97);
   }
+  ctx.restore();
 }
 
 function buildCustomSVGScreen(s,idx,ox,oy,w,h){
   const resW=s.resW,resH=s.resH,label=getLabel(s,idx);
-  let o=`<rect x="${ox}" y="${oy}" width="${w}" height="${h}" fill="${s.bgColor}"/>`;
+  let o='';
+  if(s.rotation) o+=`<g transform="rotate(${s.rotation} ${ox+w/2} ${oy+h/2})">`;
+  o+=`<rect x="${ox}" y="${oy}" width="${w}" height="${h}" fill="${s.bgColor}"/>`;
 
   if(s.showGrid){
     const gridCols=s.gridDensity,gridRows=Math.round(s.gridDensity*(resH/resW));
@@ -1742,6 +1786,7 @@ function buildCustomSVGScreen(s,idx,ox,oy,w,h){
   if(customScreens.length>1){
     o+=`<text x="${ox+w*.98}" y="${oy+h*.97}" text-anchor="end" font-family="IBM Plex Mono,monospace" font-size="${is}" fill="${s.dimTextColor}" fill-opacity="${dOp}">${resW} × ${resH}px</text>`;
   }
+  if(s.rotation) o+=`</g>`;
   return o;
 }
 
