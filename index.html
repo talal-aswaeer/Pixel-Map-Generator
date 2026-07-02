@@ -1550,6 +1550,31 @@ function drawCustomAll(){
     });
   }
   customScreens.forEach((s,i)=>drawCustomScreen(s,i));
+
+  // Total resolution overlay (multiple screens only) — drawn inside first screen, rotates with it
+  if(customScreens.length>1){
+    let mnX=Infinity,mnY=Infinity,mxX=-Infinity,mxY=-Infinity;
+    customScreens.forEach(s=>{
+      const bb=getScreenBBox(s);
+      mnX=Math.min(mnX,bb.minX);mnY=Math.min(mnY,bb.minY);
+      mxX=Math.max(mxX,bb.maxX);mxY=Math.max(mxY,bb.maxY);
+    });
+    const totalResX=Math.round((mxX-mnX)*PPM);
+    const totalResY=Math.round((mxY-mnY)*PPM);
+    const s0=customScreens[0];
+    const r=sRectCanvas(s0);
+    const is=Math.min(r.w,r.h)*.022;
+    if(is>3){
+      ctx.save();
+      applyRot(ctx,s0,r.x,r.y,r.w,r.h);
+      ctx.font=`${is}px 'IBM Plex Mono',monospace`;
+      ctx.fillStyle=hx('#ffffff',.25);
+      ctx.textAlign='left';ctx.textBaseline='top';
+      ctx.fillText(`Total ${totalResX}X${totalResY} px`,r.x+r.w*.02,r.y+r.h*.03);
+      ctx.restore();
+    }
+  }
+
   // Highlight (rotates with screen)
   const s=cActive();
   const hl=document.getElementById('screenHL');
@@ -1669,6 +1694,22 @@ function cExportPNG(){
   customScreens.forEach((s,i)=>{
     drawCustomScreenExport(ectx,s,i,(s.posX-minX)*PPM,(s.posY-minY)*PPM,s.resW,s.resH);
   });
+
+  // Total resolution overlay (multiple screens only)
+  if(customScreens.length>1){
+    const s0=customScreens[0];
+    const s0ox=(s0.posX-minX)*PPM, s0oy=(s0.posY-minY)*PPM;
+    const s0w=s0.resW, s0h=s0.resH;
+    const is=Math.min(s0w,s0h)*.022;
+    ectx.save();
+    applyRot(ectx,s0,s0ox,s0oy,s0w,s0h);
+    ectx.font=`${is}px 'IBM Plex Mono',monospace`;
+    ectx.fillStyle=hx('#ffffff',.25);
+    ectx.textAlign='left';ectx.textBaseline='top';
+    ectx.fillText(`Total ${totalW}X${totalH} px`,s0ox+s0w*.02,s0oy+s0h*.03);
+    ectx.restore();
+  }
+
   ec.toBlob(b=>{
     const u=URL.createObjectURL(b),a=document.createElement('a');
     a.download=`${pixelMapName.split(" ").join("_")}_${totalW}x${totalH}.png`;a.href=u;a.click();URL.revokeObjectURL(u);
@@ -1685,6 +1726,17 @@ function cExportSVG(){
   customScreens.forEach((s,idx)=>{
     svg+=buildCustomSVGScreen(s,idx,(s.posX-minX)*PPM,(s.posY-minY)*PPM,s.resW,s.resH);
   });
+
+  // Total resolution overlay (multiple screens only)
+  if(customScreens.length>1){
+    const s0=customScreens[0];
+    const s0ox=(s0.posX-minX)*PPM, s0oy=(s0.posY-minY)*PPM;
+    const s0w=s0.resW, s0h=s0.resH;
+    const is=Math.min(s0w,s0h)*.022;
+    const rotAttr=s0.rotation?` transform="rotate(${s0.rotation} ${s0ox+s0w/2} ${s0oy+s0h/2})"`:'';
+    svg+=`<text x="${s0ox+s0w*.02}" y="${s0oy+s0h*.03+is}" font-family="IBM Plex Mono,monospace" font-size="${is}" fill="white" fill-opacity="0.25"${rotAttr}>Total ${totalW}X${totalH} px</text>`;
+  }
+
   svg+=`</svg>`;
   const b=new Blob([svg],{type:'image/svg+xml'}),u=URL.createObjectURL(b),a=document.createElement('a');
   a.download=`${pixelMapName.split(" ").join("_")}_${totalW}x${totalH}.svg`;a.href=u;a.click();URL.revokeObjectURL(u);
