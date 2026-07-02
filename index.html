@@ -352,6 +352,33 @@ function applyRot(ctx,s,x,y,w,h){
 function curList(){return appMode==='custom'?customScreens:screens;}
 function isFreeMode(){return appMode==='custom'?cLayoutMode==='free':layoutMode==='free';}
 
+// Edge snapping: magnetically align a dragged screen to other screens' edges,
+// so stacked/adjacent screens sit flush with zero gap. Falls back to grid snap.
+// Custom mode grid = whole pixels; LED grid = 0.5m.
+function edgeSnap(s,x,y,list,dragIdx){
+  const d=sDimsM(s);
+  const thresh=10/(PPM*zoom); // ~10 canvas px magnet range, in meters
+  let bestX=null,bestY=null,bdx=thresh,bdy=thresh;
+  list.forEach((o,i)=>{
+    if(i===dragIdx)return;
+    const od=sDimsM(o);
+    // Candidate X positions: flush right-of, flush left-of, left-aligned, right-aligned
+    [o.posX+od.w, o.posX-d.w, o.posX, o.posX+od.w-d.w].forEach(cx=>{
+      const dist=Math.abs(x-cx);
+      if(dist<bdx){bdx=dist;bestX=cx;}
+    });
+    // Candidate Y positions: flush below, flush above, top-aligned, bottom-aligned
+    [o.posY+od.h, o.posY-d.h, o.posY, o.posY+od.h-d.h].forEach(cy=>{
+      const dist=Math.abs(y-cy);
+      if(dist<bdy){bdy=dist;bestY=cy;}
+    });
+  });
+  // Grid fallback where no edge captured
+  if(bestX===null)bestX=appMode==='custom'?Math.round(x*PPM)/PPM:Math.round(x*2)/2;
+  if(bestY===null)bestY=appMode==='custom'?Math.round(y*PPM)/PPM:Math.round(y*2)/2;
+  return{x:bestX,y:bestY};
+}
+
 function setFreeLayout(){
   layoutMode='free';
   document.querySelectorAll('#ledLayoutSelect .layout-btn').forEach(b=>b.classList.toggle('active',b.dataset.layout==='free'));
@@ -872,8 +899,13 @@ document.addEventListener('mousemove',e=>{
 
   if(dragging!==null){
     const m=canvasToM(mx-dragOff.x,my-dragOff.y);
-    list[dragging].posX=isSnapping?Math.round(m.x*2)/2:m.x;
-    list[dragging].posY=isSnapping?Math.round(m.y*2)/2:m.y;
+    const s=list[dragging];
+    if(isSnapping){
+      const snapped=edgeSnap(s,m.x,m.y,list,dragging);
+      s.posX=snapped.x;s.posY=snapped.y;
+    }else{
+      s.posX=m.x;s.posY=m.y;
+    }
     redraw();
   } else if(isPanning){
     panX=panStartOff.x+(e.clientX-panStart.x);
