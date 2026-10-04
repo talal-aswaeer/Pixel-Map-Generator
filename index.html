@@ -111,7 +111,7 @@ let logoLoaded=false;
 function mkCustomScreen(i){
   return {
     id:Date.now()+i, resW:1920, resH:1080, name:LABELS[i]||'',
-    bgColor:'#121216', accentColor:'#bca5ff', gridColor:'#bca5ff', crosshairColor:'#bca5ff', borderColor:'#bca5ff',
+    bgColor:'#121216', accentColor:'#2596be', gridColor:'#2596be', crosshairColor:'#2596be', borderColor:'#2596be',
     resTextColor:'#ffffff', dimTextColor:'#ffffff',
     resTextOpacity:100, dimTextOpacity:50,
     gridOpacity:15, crosshairOpacity:30,
@@ -129,7 +129,7 @@ let customActiveIdx=0;
 function mkScreen(i){
   return {
     id:Date.now()+i, widthM:24, heightM:8, pitchRes:128, cabinetSize:.5, pitchLabel:'P3.9',
-    bgColor:"#121216", accentColor:"#bca5ff", gridColor:"#bca5ff", crosshairColor:"#bca5ff", borderColor:"#bca5ff",
+    bgColor:"#121216", accentColor:"#2596be", gridColor:"#2596be", crosshairColor:"#2596be", borderColor:"#2596be",
     resTextColor:"#ffffff", dimTextColor:"#ffffff",
     resTextOpacity:100, dimTextOpacity:50, gridOpacity:15,
     showGrid:true, showBorder:true, showCrosshair:true,
@@ -592,10 +592,10 @@ function drawScreen(s,idx){
   const cx=p.x+w/2, cy=p.y+h/2;
 
   if(label){
-    const ls=Math.min(w,h)*.04;
+    const ls=Math.min(w,h)*.06;
     ctx.font=`600 ${ls}px Arial,sans-serif`;
-    ctx.fillStyle=s.accentColor;ctx.textAlign='left';ctx.textBaseline='top';
-    ctx.fillText(`SCREEN ${label}`,p.x+w*.035,p.y+h*.055);
+    ctx.fillStyle=s.accentColor;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(`SCREEN ${label}`,cx,cy-Math.min(w,h)*.12);
   }
 
   const rts=Math.min(w,h)*.10;
@@ -982,7 +982,7 @@ function drawScreenExport(ctx,s,idx,ox,oy,w,h){
   }
 
   const label=getLabel(s,idx),cx=ox+w/2,cy=oy+h/2;
-  if(label){const ls=Math.min(w,h)*.04;ctx.font=`600 ${ls}px Arial,sans-serif`;ctx.fillStyle=s.accentColor;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(`SCREEN ${label}`,ox+w*.035,oy+h*.055);}
+  if(label){const ls=Math.min(w,h)*.06;ctx.font=`600 ${ls}px Arial,sans-serif`;ctx.fillStyle=s.accentColor;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(`SCREEN ${label}`,cx,cy-Math.min(w,h)*.12);}
 
   const rts=Math.min(w,h)*.10;ctx.font=`600 ${rts}px Arial,sans-serif`;ctx.fillStyle=hx(s.resTextColor,s.resTextOpacity/100);ctx.textAlign='center';ctx.textBaseline='middle';
   const rt=`${resW} × ${resH}`;const ty=cy;ctx.fillText(rt,cx,ty);
@@ -1044,7 +1044,7 @@ function buildScreenSVG(s,idx,ox,oy,w,h){
 
   const cx=ox+w/2,cy=oy+h/2,rts=Math.min(w,h)*.10,lo=0;
   const rOp=(s.resTextOpacity/100).toFixed(2), dOp=(s.dimTextOpacity/100).toFixed(2);
-  if(label){const ls=Math.min(w,h)*.04;o+=`<text x="${ox+w*.035}" y="${oy+h*.055}" dominant-baseline="hanging" text-anchor="start" font-family="Arial,sans-serif" font-weight="600" font-size="${ls}" fill="${s.accentColor}">SCREEN ${esc(label)}</text>`;}
+  if(label){const ls=Math.min(w,h)*.06;o+=`<text x="${cx}" y="${cy-Math.min(w,h)*.12}" dominant-baseline="central" text-anchor="middle" font-family="Arial,sans-serif" font-weight="600" font-size="${ls}" fill="${s.accentColor}">SCREEN ${esc(label)}</text>`;}
   o+=`<text x="${cx}" y="${cy+lo}" text-anchor="middle" dominant-baseline="central" font-family="Arial,sans-serif" font-weight="600" font-size="${rts}" fill="${s.resTextColor}" fill-opacity="${rOp}">${resW} × ${resH}<tspan font-family="Consolas,monospace" font-size="${rts*.35}" fill-opacity="${(rOp*.6).toFixed(2)}">px</tspan></text>`;
   const ds=Math.min(w,h)*.035;
   o+=`<text x="${cx}" y="${cy+lo+rts*.7}" text-anchor="middle" font-family="Arial,sans-serif" font-size="${ds}" fill="${s.dimTextColor}" fill-opacity="${dOp}">${s.widthM} × ${s.heightM}<tspan font-size="${ds*.8}" fill-opacity="${(dOp*.7).toFixed(2)}">m</tspan></text>`;
@@ -1071,7 +1071,7 @@ function buildScreenSVG(s,idx,ox,oy,w,h){
 }
 
 // ─── CUSTOM COLOR PICKER ───
-const PRESETS=['#bca5ff','#45b7d1','#6c5ce7','#a29bfe','#fd79a8','#ff6b6b','#e17055','#fdcb6e','#ffeaa7','#55efc4','#00b894','#0984e3','#ffffff','#cccccc','#888888','#444444','#121216','#000000'];
+const PRESETS=['#2596be','#45b7d1','#6c5ce7','#a29bfe','#fd79a8','#ff6b6b','#e17055','#fdcb6e','#ffeaa7','#55efc4','#00b894','#0984e3','#ffffff','#cccccc','#888888','#444444','#121216','#000000'];
 let pickerState={open:false,id:null,hue:0,sat:100,val:100};
 
 function hexToHSV(hex){
@@ -1562,9 +1562,9 @@ function drawCustomScreen(s,idx){
   const cx=p.x+w/2,cy=p.y+h/2;
 
   if(label){
-    const ls=Math.min(w,h)*.04;
-    ctx.font=`600 ${ls}px Arial,sans-serif`;ctx.fillStyle=s.accentColor;ctx.textAlign='left';ctx.textBaseline='top';
-    ctx.fillText(`SCREEN ${label}`,p.x+w*.035,p.y+h*.055);
+    const ls=Math.min(w,h)*.06;
+    ctx.font=`600 ${ls}px Arial,sans-serif`;ctx.fillStyle=s.accentColor;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(`SCREEN ${label}`,cx,cy-Math.min(w,h)*.12);
   }
 
   // Resolution text with custom color & opacity
@@ -1704,7 +1704,7 @@ function drawCustomScreenExport(ctx,s,idx,ox,oy,w,h){
   }
 
   const label=getLabel(s,idx),cx=ox+w/2,cy=oy+h/2;
-  if(label){const ls=Math.min(w,h)*.04;ctx.font=`600 ${ls}px Arial,sans-serif`;ctx.fillStyle=s.accentColor;ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(`SCREEN ${label}`,ox+w*.035,oy+h*.055);}
+  if(label){const ls=Math.min(w,h)*.06;ctx.font=`600 ${ls}px Arial,sans-serif`;ctx.fillStyle=s.accentColor;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(`SCREEN ${label}`,cx,cy-Math.min(w,h)*.12);}
   const rts=Math.min(w,h)*.10;ctx.font=`600 ${rts}px Arial,sans-serif`;
   ctx.fillStyle=hx(s.resTextColor,s.resTextOpacity/100);
   ctx.textAlign='center';ctx.textBaseline='middle';
@@ -1754,7 +1754,7 @@ function buildCustomSVGScreen(s,idx,ox,oy,w,h){
   const cx=ox+w/2,cy=oy+h/2,rts=Math.min(w,h)*.10,lo=0;
   const rOp=(s.resTextOpacity/100).toFixed(2);
   const dOp=(s.dimTextOpacity/100).toFixed(2);
-  if(label){const ls=Math.min(w,h)*.04;o+=`<text x="${ox+w*.035}" y="${oy+h*.055}" dominant-baseline="hanging" text-anchor="start" font-family="Arial,sans-serif" font-weight="600" font-size="${ls}" fill="${s.accentColor}">SCREEN ${esc(label)}</text>`;}
+  if(label){const ls=Math.min(w,h)*.06;o+=`<text x="${cx}" y="${cy-Math.min(w,h)*.12}" dominant-baseline="central" text-anchor="middle" font-family="Arial,sans-serif" font-weight="600" font-size="${ls}" fill="${s.accentColor}">SCREEN ${esc(label)}</text>`;}
   o+=`<text x="${cx}" y="${cy+lo}" text-anchor="middle" dominant-baseline="central" font-family="Arial,sans-serif" font-weight="600" font-size="${rts}" fill="${s.resTextColor}" fill-opacity="${rOp}">${resW} × ${resH}<tspan font-family="Consolas,monospace" font-size="${rts*.35}" fill-opacity="${(rOp*.6).toFixed(2)}">px</tspan></text>`;
 
   const showText=s.brandMode==='text'||s.brandMode==='both',showLogo=(s.brandMode==='logo'||s.brandMode==='both')&&s.logoDataURL;
